@@ -3,5 +3,9 @@
   <Profiles>
     <Profile Name="(Default)" />
   </Profiles>
-  <Settings />
+  <Settings>
+    <Setting Name="DownloadDirectory" Type="System.String" Scope="User">
+      <Value Profile="(Default)">%USERPROFILE%\Documents\GitHubProjects</Value>
+    </Setting>
+  </Settings>
 </SettingsFile>

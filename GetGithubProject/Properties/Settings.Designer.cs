@@ -26,5 +26,14 @@ namespace GetGithubProject.Properties
                 return defaultInstance;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("%USERPROFILE%\\Documents\\GitHubProjects")]
+        public string DownloadDirectory
+        {
+            get { return ((string)(this["DownloadDirectory"])); }
+            set { this["DownloadDirectory"] = value; }
+        }
     }
 }

@@ -158,7 +158,7 @@ namespace GetGithubProject
                 MinimumSize = new System.Drawing.Size(0, 44),
                 Margin = Padding.Empty,
                 Font = new System.Drawing.Font("Microsoft YaHei UI", 10F),
-                Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GitHubProjects")
+                Text = GetSavedDownloadDirectory()
             };
             browseButton = MakeButton("选择文件夹…", 0, 0, 112, 38, false);
             browseButton.Dock = DockStyle.Fill;
@@ -282,7 +282,11 @@ namespace GetGithubProject
                 if (Directory.Exists(destinationTextBox.Text))
                     dialog.SelectedPath = destinationTextBox.Text;
                 if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
                     destinationTextBox.Text = dialog.SelectedPath;
+                    if (!SaveDownloadDirectoryPreference())
+                        MessageBox.Show(this, "无法在软件所在文件夹写入配置。请将软件放在可写入的位置，才能保存此路径。", "无法保存设置", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
         }
 
@@ -297,6 +301,8 @@ namespace GetGithubProject
                 if (string.IsNullOrWhiteSpace(destinationTextBox.Text))
                     throw new ArgumentException("请选择下载文件夹。");
                 Directory.CreateDirectory(destinationRoot);
+                if (!SaveDownloadDirectoryPreference(destinationRoot))
+                    MessageBox.Show(this, "无法在软件所在文件夹写入配置。此次下载仍会继续，但下次启动时不会记住此路径。", "无法保存设置", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
@@ -304,7 +310,9 @@ namespace GetGithubProject
                 return;
             }
 
-            latestProjectDirectory = destinationRoot;
+            var repositoryDirectory = GetUniqueProjectDirectory(destinationRoot, SanitizePathPart(repository.Name));
+            Directory.CreateDirectory(repositoryDirectory);
+            latestProjectDirectory = repositoryDirectory;
             SetBusy(true);
             logTextBox.Clear();
             progressBar.Value = 0;
@@ -339,7 +347,7 @@ namespace GetGithubProject
                 if (selectedReleaseAsset != null)
                 {
                     var releaseTag = SanitizePathPart(string.IsNullOrWhiteSpace(release.TagName) ? release.Name : release.TagName);
-                    releaseDirectory = GetUniqueProjectDirectory(destinationRoot, repository.Name + "-Release-" + releaseTag);
+                    releaseDirectory = GetUniqueProjectDirectory(repositoryDirectory, "Release-" + releaseTag);
                     Directory.CreateDirectory(releaseDirectory);
 
                     var assetFileName = SanitizeFileName(selectedReleaseAsset.Name);
@@ -420,7 +428,7 @@ namespace GetGithubProject
                 progressBar.Value = releaseAsset == null ? 62 : 73;
                 token.ThrowIfCancellationRequested();
 
-                projectDirectory = GetUniqueProjectDirectory(destinationRoot, repository.Name + "-Source");
+                projectDirectory = GetUniqueProjectDirectory(repositoryDirectory, "Source");
                 Directory.CreateDirectory(projectDirectory);
                 SetStatus("正在解压仓库…");
                 Log("正在解压到：" + projectDirectory);
@@ -482,7 +490,7 @@ namespace GetGithubProject
                 var outputs = FindExecutableOutputs(projectDirectory, buildStarted);
                 if (outputs.Count > 0)
                 {
-                    var deploymentDirectory = GetUniqueProjectDirectory(destinationRoot, repository.Name + "-LocalBuild");
+                    var deploymentDirectory = GetUniqueProjectDirectory(repositoryDirectory, "LocalBuild");
                     Directory.CreateDirectory(deploymentDirectory);
                     SetStatus("正在将本机构建结果部署到指定目录…");
                     var deployedOutputs = await Task.Run(() => DeployExecutableOutputs(outputs, deploymentDirectory, token), token);
@@ -559,6 +567,7 @@ namespace GetGithubProject
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            SaveDownloadDirectoryPreference();
             if (cancellationSource != null)
             {
                 cancellationSource.Cancel();
@@ -569,6 +578,47 @@ namespace GetGithubProject
                 }
                 catch { }
             }
+        }
+
+        private static string GetSavedDownloadDirectory()
+        {
+            var defaultDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Downloads");
+            try
+            {
+                var settingsPath = GetPortableSettingsPath();
+                if (File.Exists(settingsPath))
+                {
+                    var configured = File.ReadAllText(settingsPath, Encoding.UTF8).Trim();
+                    if (!string.IsNullOrWhiteSpace(configured))
+                        return configured;
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return defaultDirectory;
+        }
+
+        private bool SaveDownloadDirectoryPreference()
+        {
+            return SaveDownloadDirectoryPreference(destinationTextBox.Text);
+        }
+
+        private static bool SaveDownloadDirectoryPreference(string directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                return false;
+            try
+            {
+                File.WriteAllText(GetPortableSettingsPath(), directory.Trim(), new UTF8Encoding(false));
+                return true;
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
+
+        private static string GetPortableSettingsPath()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GetGithubProject.settings");
         }
 
         private void SetBusy(bool busy)
